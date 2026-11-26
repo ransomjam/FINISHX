@@ -42,7 +42,7 @@ final localStorageProvider = Provider<LocalStorageDataSource>((ref) {
 });
 
 final remoteSyncDataSourceProvider = Provider<RemoteSyncDataSource>((ref) {
-  return const UnconfiguredRemoteSyncDataSource();
+  return HttpRemoteSyncDataSource();
 });
 
 final commitmentCalculatorProvider = Provider<CommitmentCalculator>((ref) {

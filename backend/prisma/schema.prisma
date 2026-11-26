@@ -1,0 +1,450 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+  APPLE
+}
+
+enum JourneyCategory {
+  DATA_SCIENCE
+  SOFTWARE_ENGINEERING
+  CYBERSECURITY
+  PRODUCT_MANAGEMENT
+  MARKETING
+  ENTREPRENEURSHIP
+  PERSONAL_DEVELOPMENT
+  LANGUAGES
+  FITNESS
+  OTHER
+}
+
+enum ResourceType {
+  UDEMY
+  COURSERA
+  YOUTUBE
+  BOOK
+  COACH_OR_MENTOR
+  PERSONAL_STUDY_PLAN
+  OTHER
+}
+
+enum JourneyStatus {
+  DRAFT
+  QUEUED
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  MISSED
+  CANCELLED
+}
+
+enum SessionFeeling {
+  DIFFICULT
+  OKAY
+  GOOD
+  EXCELLENT
+}
+
+enum PauseReason {
+  VACATION
+  ILLNESS
+  FAMILY_COMMITMENTS
+  WORK_COMMITMENTS
+  EXAMS
+  OTHER
+}
+
+enum WeeklyCompletionAnswer {
+  YES
+  PARTIALLY
+  NO
+}
+
+enum CompletionOutcome {
+  YES
+  PARTIALLY
+  NOT_YET
+}
+
+enum ReactionType {
+  APPLAUSE
+  FIRE
+  STRENGTH
+  CELEBRATION
+}
+
+enum LeagueTier {
+  FOUNDATION
+  MOMENTUM
+  RESOLUTE
+  VANGUARD
+  SUMMIT
+}
+
+enum GroupRole {
+  MEMBER
+  LEADER
+}
+
+enum FeedActivityType {
+  SESSION_COMPLETED
+  CONSISTENCY_STREAK
+  WEEKLY_COMMITMENT_COMPLETED
+  PROGRESS_SHARED
+  JOURNEY_COMPLETED
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+  WEB
+}
+
+enum SyncEventStatus {
+  PROCESSED
+  CONFLICT_SKIPPED
+  REJECTED
+}
+
+model User {
+  id                    String            @id @default(cuid())
+  email                 String            @unique
+  passwordHash          String?
+  name                  String
+  firstName             String
+  avatarUrl             String?
+  authProvider          AuthProvider      @default(EMAIL)
+  emailVerified         Boolean           @default(false)
+  verificationToken     String?
+  passwordResetToken    String?
+  passwordResetExpires  DateTime?
+  timezone              String            @default("UTC")
+  lastActiveAt          DateTime          @default(now())
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  refreshTokens         RefreshToken[]
+  journeys              Journey[]
+  sessions              Session[]
+  reflections           SessionReflection[]
+  journeyUpdates        JourneyUpdate[]
+  weeklyReflections     WeeklyReflection[]
+  groupMemberships      GroupMember[]
+  feedActivities        FeedActivity[]
+  feedReactions         FeedReaction[]
+  notifications         Notification[]
+  devices               Device[]
+  syncEvents            SyncEvent[]
+  journeyPauses         JourneyPause[]
+  journeyHistories      JourneyHistory[]
+
+  @@index([email])
+}
+
+model RefreshToken {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId    String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model Journey {
+  id                   String             @id @default(cuid())
+  userId               String
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                 String
+  category             JourneyCategory
+  resourceType         ResourceType       @default(OTHER)
+  resourceName         String?
+  resourceUrl          String?
+  status               JourneyStatus      @default(ACTIVE)
+  startDate            DateTime
+  targetCompletionDate DateTime
+  originalTargetDate   DateTime
+  commitmentSignedAt   DateTime           @default(now())
+  groupId              String?
+  group                AccountabilityGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  // Pause tracking
+  pauseReason          PauseReason?
+  pausedAt             DateTime?
+
+  // Cancellation tracking
+  cancelledAt          DateTime?
+  cancelReason         String?
+
+  // Completion tracking
+  completedAt          DateTime?
+  completionOutcome    CompletionOutcome?
+  proudAccomplishment  String?
+  biggestLesson        String?
+
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  schedule             CommitmentSchedule?
+  sessions             Session[]
+  reflections          SessionReflection[]
+  updates              JourneyUpdate[]
+  weeklyReflections    WeeklyReflection[]
+  pauses               JourneyPause[]
+  histories            JourneyHistory[]
+
+  @@index([userId, status])
+  @@index([groupId])
+}
+
+model CommitmentSchedule {
+  id            String          @id @default(cuid())
+  journeyId     String          @unique
+  journey       Journey         @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  effectiveFrom DateTime        @default(now())
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  days          CommitmentDay[]
+
+  @@index([journeyId])
+}
+
+model CommitmentDay {
+  id              String              @id @default(cuid())
+  scheduleId      String
+  schedule        CommitmentSchedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  weekday         Int                 // 1 = Mon, 2 = Tue, ..., 7 = Sun
+  startHour       Int
+  startMinute     Int
+  endHour         Int
+  endMinute       Int
+  durationMinutes Int
+
+  @@index([scheduleId])
+}
+
+model Session {
+  id                     String             @id @default(cuid())
+  journeyId              String
+  journey                Journey            @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  userId                 String
+  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scheduledDate          DateTime
+  plannedStartHour       Int
+  plannedStartMinute     Int
+  plannedEndHour         Int
+  plannedEndMinute       Int
+  plannedDurationMinutes Int
+  status                 SessionStatus      @default(SCHEDULED)
+  startedAt              DateTime?
+  endedAt                DateTime?
+  actualDurationMinutes  Int?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  reflection             SessionReflection?
+
+  @@index([journeyId, status])
+  @@index([userId, scheduledDate])
+}
+
+model SessionReflection {
+  id          String         @id @default(cuid())
+  sessionId   String         @unique
+  session     Session        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  journeyId   String
+  journey     Journey        @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feeling     SessionFeeling
+  note        String?
+  createdAt   DateTime       @default(now())
+
+  @@index([journeyId])
+  @@index([userId])
+}
+
+model JourneyUpdate {
+  id          String    @id @default(cuid())
+  journeyId   String
+  journey     Journey   @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  content     String?
+  createdAt   DateTime  @default(now())
+
+  @@index([journeyId])
+  @@index([userId])
+}
+
+model AccountabilityGroup {
+  id           String            @id @default(cuid())
+  name         String
+  category     JourneyCategory
+  league       LeagueTier        @default(FOUNDATION)
+  healthScore  Int               @default(80)
+  maxMembers   Int               @default(20)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  members      GroupMember[]
+  feed         FeedActivity[]
+  journeys     Journey[]
+
+  @@index([category])
+}
+
+model GroupMember {
+  id        String              @id @default(cuid())
+  groupId   String
+  group     AccountabilityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      GroupRole           @default(MEMBER)
+  joinedAt  DateTime            @default(now())
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+model FeedActivity {
+  id          String              @id @default(cuid())
+  groupId     String
+  group       AccountabilityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        FeedActivityType
+  message     String
+  detailText  String?
+  createdAt   DateTime            @default(now())
+
+  reactions   FeedReaction[]
+
+  @@index([groupId, createdAt])
+}
+
+model FeedReaction {
+  id          String        @id @default(cuid())
+  activityId  String
+  activity    FeedActivity  @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        ReactionType
+  createdAt   DateTime      @default(now())
+
+  @@unique([activityId, userId, type])
+  @@index([activityId])
+}
+
+model WeeklyReflection {
+  id                   String                 @id @default(cuid())
+  journeyId            String
+  journey              Journey                @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  userId               String
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekStartDate        DateTime
+  completedCommitments WeeklyCompletionAnswer
+  biggestWin           String
+  biggestChallenge     String
+  nextWeekFocus        String
+  createdAt            DateTime               @default(now())
+
+  @@index([journeyId])
+  @@index([userId, weekStartDate])
+}
+
+model JourneyPause {
+  id          String       @id @default(cuid())
+  journeyId   String
+  journey     Journey      @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pausedAt    DateTime     @default(now())
+  resumedAt   DateTime?
+  reason      PauseReason
+  createdAt   DateTime     @default(now())
+
+  @@index([journeyId])
+}
+
+model JourneyHistory {
+  id          String    @id @default(cuid())
+  journeyId   String
+  journey     Journey   @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event       String
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([journeyId])
+}
+
+model Notification {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  body        String
+  actionRoute String?
+  isRead      Boolean   @default(false)
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, isRead])
+}
+
+model Device {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceToken String         @unique
+  platform    DevicePlatform @default(ANDROID)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([userId])
+}
+
+model SyncEvent {
+  id              String          @id @default(cuid())
+  clientEventId   String
+  deviceId        String?
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventType       String
+  entityType      String
+  entityId        String
+  clientTimestamp DateTime
+  receivedAt      DateTime        @default(now())
+  payload         Json
+  status          SyncEventStatus @default(PROCESSED)
+  error           String?
+
+  @@unique([userId, clientEventId])
+  @@index([userId, receivedAt])
+}
